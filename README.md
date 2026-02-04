@@ -53,7 +53,7 @@ Natural-language questions are routed through specialized agents (Intent, Schema
 
 ---
 
-## 🧱 Diagrams
+## 🧱 UML Class Diagram
 
 ```mermaid
 classDiagram
@@ -96,6 +96,8 @@ Orchestrator --> SQLExecutorAgent
 
 GraphState --> Orchestrator
 ```
+
+## 🧱 Data Flow Diagram (DFD)
 
 ```mermaid
 flowchart LR
