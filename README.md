@@ -128,84 +128,75 @@ participant SA as Schema Agent
 participant GA as SQL-Gen Agent
 participant VA as SQL-Validator Agent
 participant EA as SQL-Executor Agent
-participant MCP as MCP Server (tools/prompts)
+participant MCP as MCP Server
 participant PG as Postgres (appdb + pgvector)
-participant CP as Checkpointer (LangGraph in Postgres)
+participant CP as Checkpointer (Postgres)
 participant J as Jaeger
 
 U->>UI: Enter question
 UI->>API: POST /chat {content, thread_id}
-API->>J: create trace/span for request
-API->>CP: load state by thread_id
-CP-->>API: state (history/messages)
+API->>J: Start trace/span
+API->>CP: Load state by thread_id
+CP-->>API: history/messages
 
-API->>IA: POST /messages (history + latest user msg)
-IA->>MCP: get_prompt(intent) + tools (if any)
+API->>IA: POST /messages (history + latest msg)
+IA->>MCP: Get intent prompt/tools
 MCP-->>IA: prompt/tools
-IA-->>API: JSON {route: schema|final, ...}
-API->>J: span: intent_route
+IA-->>API: route = schema OR final
 
 alt route == final
   API->>API: final_node (direct answer)
-  API->>CP: save updated state
+  API->>CP: Save updated state
   CP-->>API: ok
-  API-->>UI: JSON response (direct_answer)
+  API-->>UI: JSON {direct_answer}
   UI-->>U: Render answer
 else route == schema
   API->>SA: POST /messages
-  SA->>MCP: call tool schema_search / introspect_db
-  MCP->>PG: SELECT ... (introspection / RAG schema)
+  SA->>MCP: Tool call schema_search or introspect_db
+  MCP->>PG: SELECT (introspection/RAG)
   PG-->>MCP: rows
-  MCP-->>SA: tool result
+  MCP-->>SA: schema context
   SA-->>API: schema_context
-  API->>J: span: schema_node
 
   API->>GA: POST /messages (with schema_context)
-  GA->>MCP: call tool list_join_cards / schema_search (optional)
-  MCP->>PG: SELECT ... (schema join cards / RAG)
+  GA->>MCP: Optional tool calls (join cards/schema_search)
+  MCP->>PG: SELECT (metadata/RAG)
   PG-->>MCP: rows
-  MCP-->>GA: tool result
-  GA-->>API: SQL draft + params + explanation
-  API->>J: span: sqlgen_node
+  MCP-->>GA: tool results
+  GA-->>API: SQL draft + params
 
-  loop validation retries (max 3)
-    API->>VA: POST /messages (SQL draft)
-    VA->>MCP: call tool validate_sql
-    MCP-->>VA: {decision: pass|rework, issues, feedback}
-    VA-->>API: JSON {route: sql_pipeline|direct_answer, decision, ...}
-    API->>J: span: validator_node
+  loop Validate up to 3 attempts
+    API->>VA: POST /messages (SQL draft + params)
+    VA->>MCP: Tool call validate_sql
+    MCP-->>VA: decision pass OR rework; issues/feedback
+    VA-->>API: decision + route
 
-    alt decision == rework AND route == sql_pipeline
-      API->>GA: POST /messages (feedback_for_sql_gen)
-      GA-->>API: revised SQL draft + params
-      API->>J: span: sqlgen_rework
-    else decision == pass AND route == sql_pipeline
-      break
-    else route == direct_answer
+    alt route == direct_answer
       API->>API: final_node (fallback clarifying questions)
-      API->>CP: save updated state
+      API->>CP: Save updated state
       CP-->>API: ok
-      API-->>UI: JSON response (direct_answer)
+      API-->>UI: JSON {direct_answer}
       UI-->>U: Render answer
-      break
+    else route == sql_pipeline
+      alt decision == rework
+        API->>GA: POST /messages (validator feedback)
+        GA-->>API: Revised SQL draft + params
+      else decision == pass
+        API->>EA: POST /messages (validated SQL + params)
+        EA->>MCP: Tool call execute_sql(sql, params)
+        MCP->>PG: SET LOCAL statement_timeout; SELECT ...
+        PG-->>MCP: rows (maybe truncated)
+        MCP-->>EA: result set
+        EA-->>API: direct_answer + result preview
+
+        API->>API: final_node (format response)
+        API->>CP: Save updated state
+        CP-->>API: ok
+        API-->>UI: JSON response (+ SQL popover data)
+        UI-->>U: Render answer + SQL details
+      end
     end
   end
-
-  opt execution (only if validation passed)
-    API->>EA: POST /messages (validated SQL + params)
-    EA->>MCP: call tool execute_sql(sql, params)
-    MCP->>PG: SET LOCAL statement_timeout=...; SELECT ...
-    PG-->>MCP: rows (truncated to max_rows)
-    MCP-->>EA: {columns, rows, row_count, truncated}
-    EA-->>API: JSON {direct_answer, result_preview}
-    API->>J: span: executor_node
-  end
-
-  API->>API: final_node (format response)
-  API->>CP: save updated state
-  CP-->>API: ok
-  API-->>UI: JSON response
-  UI-->>U: Render answer + SQL popover
 end
 ```
 
