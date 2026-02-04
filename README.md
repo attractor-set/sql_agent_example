@@ -21,7 +21,7 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   - Retry loops  
   - Persistent state via PostgreSQL checkpointer  
   
-- 🧬 **RAG over Database Schema**
+- 🧬 **RAG over database schema and metadata (pgvector)**
   - pgvector + embeddings  
   - Schema and metadata retrieval via MCP server  
 
@@ -64,31 +64,74 @@ class GraphState {
   +history: List~AnyMessage~ <<add_messages>>
 }
 
-class BaseMessage {
+class AnyMessage {
   +content: Any
   +name: str?
   +additional_kwargs: dict
 }
 class HumanMessage
 class AIMessage
-BaseMessage <|-- HumanMessage
-BaseMessage <|-- AIMessage
+AnyMessage <|-- HumanMessage
+AnyMessage <|-- AIMessage
 
-GraphState "1" o-- "*" BaseMessage : messages/history
+GraphState "1" o-- "*" AnyMessage : messages
+GraphState "1" o-- "*" AnyMessage : history
 
-class StateGraphGraphState {
-  +add_node(name, fn)
-  +add_edge(src, dst)
-  +add_conditional_edges(src, router, map)
+class StateGraph {
+  +add_node(name: str, fn: Callable)
+  +add_edge(src: str, dst: str)
+  +add_conditional_edges(src: str, router: Callable, mapping: dict)
   +compile(checkpointer)
 }
 
-class RouterFn {
-  +call(state) route
+class OrchestratorAPI {
+  +POST /chat(content, thread_id)
+  +invoke(graph, state)
 }
 
+class Checkpointer {
+  +load(thread_id) GraphState
+  +save(thread_id, state)
+}
+
+class Postgres {
+  +appdb
+  +pgvector extension
+  +checkpoint tables
+}
+
+class MCPServer {
+  +tools: schema_search
+  +tools: introspect_db
+  +tools: list_join_cards
+  +tools: validate_sql
+  +tools: execute_sql
+  +prompts: intent/schema/sqlgen/validator/executor
+}
+
+class AgentService {
+  +POST /messages(List~Message~)
+  +LLM call
+  +MCP tools via client
+}
+
+class IntentAgent
+class SchemaAgent
+class SQLGenAgent
+class SQLValidatorAgent
+class SQLExecutorAgent
+AgentService <|-- IntentAgent
+AgentService <|-- SchemaAgent
+AgentService <|-- SQLGenAgent
+AgentService <|-- SQLValidatorAgent
+AgentService <|-- SQLExecutorAgent
+
 class NodeFn {
-  +call(state) GraphState
+  +call(state: GraphState) GraphState
+}
+
+class RouterFn {
+  +call(state: GraphState) route: str
 }
 
 class intent_node
@@ -110,9 +153,22 @@ class validate_route
 RouterFn <|.. intent_route
 RouterFn <|.. validate_route
 
-StateGraphGraphState --> GraphState : state
-StateGraphGraphState --> NodeFn : nodes
-StateGraphGraphState --> RouterFn : routers
+OrchestratorAPI --> StateGraph : builds/invokes
+OrchestratorAPI --> Checkpointer : uses
+Checkpointer --> Postgres : persists
+
+StateGraph --> GraphState : state type
+StateGraph --> NodeFn : nodes
+StateGraph --> RouterFn : routers
+
+intent_node --> IntentAgent : HTTP call
+schema_node --> SchemaAgent : HTTP call
+sqlgen_node --> SQLGenAgent : HTTP call
+validator_node --> SQLValidatorAgent : HTTP call
+executor_node --> SQLExecutorAgent : HTTP call
+
+AgentService --> MCPServer : tool/prompt calls
+MCPServer --> Postgres : queries
 ```
 
 ## 🧱 UML Sequence Diagram
@@ -253,16 +309,17 @@ User (Streamlit)
 API (LangGraph Orchestrator)
    ↓
 Intent Agent
-   ↓
-Schema Agent
-   ↓
-SQL Generator Agent
-   ↓
-SQL Validator Agent (retry loop)
-   ↓
-SQL Executor Agent
-   ↓
-Final Answer + Trace
+   ├──→ Final Answer (direct response)
+   └──→ Schema Agent
+           ↓
+       SQL Generator Agent
+           ↓
+       SQL Validator Agent
+           ├──→ SQL Generator (rework loop)
+           ├──→ Final Answer (fallback)
+           └──→ SQL Executor Agent
+                   ↓
+               Final Answer + Trace
 ```
 
 ---
@@ -359,7 +416,9 @@ All services include **health checks** and start in the correct order.
 - ❌ No multi-statement execution  
 - ✅ Parameterized queries  
 - ✅ Validator retry limits  
-- ✅ Clear fallback to direct answers  
+- ✅ Clear fallback to direct answers
+- ✅ Statement timeout enforcement
+- ✅ Result row truncation
 
 ---
 
