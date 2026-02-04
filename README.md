@@ -115,6 +115,100 @@ StateGraphGraphState --> NodeFn : nodes
 StateGraphGraphState --> RouterFn : routers
 ```
 
+## 🧱 UML Sequence Diagram
+
+```mermaid
+sequenceDiagram
+autonumber
+actor U as User
+participant UI as Streamlit UI
+participant API as API (LangGraph Orchestrator)
+participant IA as Intent Agent
+participant SA as Schema Agent
+participant GA as SQL-Gen Agent
+participant VA as SQL-Validator Agent
+participant EA as SQL-Executor Agent
+participant MCP as MCP Server (tools/prompts)
+participant PG as Postgres (appdb + pgvector)
+participant CP as Checkpointer (LangGraph in Postgres)
+participant J as Jaeger
+
+U->>UI: Enter question
+UI->>API: POST /chat {content, thread_id}
+API->>J: create trace/span for request
+API->>CP: load state by thread_id
+CP-->>API: state (history/messages)
+
+API->>IA: POST /messages (history + latest user msg)
+IA->>MCP: get_prompt(intent) + tools (if any)
+MCP-->>IA: prompt/tools
+IA-->>API: JSON {route: schema|final, ...}
+API->>J: span: intent_route
+
+alt route == final
+  API->>API: final_node (direct answer)
+  API->>CP: save updated state
+  CP-->>API: ok
+  API-->>UI: JSON response (direct_answer)
+  UI-->>U: Render answer
+else route == schema
+  API->>SA: POST /messages
+  SA->>MCP: call tool schema_search / introspect_db
+  MCP->>PG: SELECT ... (introspection / RAG schema)
+  PG-->>MCP: rows
+  MCP-->>SA: tool result
+  SA-->>API: schema_context
+  API->>J: span: schema_node
+
+  API->>GA: POST /messages (with schema_context)
+  GA->>MCP: call tool list_join_cards / schema_search (optional)
+  MCP->>PG: SELECT ... (schema join cards / RAG)
+  PG-->>MCP: rows
+  MCP-->>GA: tool result
+  GA-->>API: SQL draft + params + explanation
+  API->>J: span: sqlgen_node
+
+  loop validation retries (max 3)
+    API->>VA: POST /messages (SQL draft)
+    VA->>MCP: call tool validate_sql
+    MCP-->>VA: {decision: pass|rework, issues, feedback}
+    VA-->>API: JSON {route: sql_pipeline|direct_answer, decision, ...}
+    API->>J: span: validator_node
+
+    alt decision == rework AND route == sql_pipeline
+      API->>GA: POST /messages (feedback_for_sql_gen)
+      GA-->>API: revised SQL draft + params
+      API->>J: span: sqlgen_rework
+    else decision == pass AND route == sql_pipeline
+      break
+    else route == direct_answer
+      API->>API: final_node (fallback clarifying questions)
+      API->>CP: save updated state
+      CP-->>API: ok
+      API-->>UI: JSON response (direct_answer)
+      UI-->>U: Render answer
+      break
+    end
+  end
+
+  opt execution (only if validation passed)
+    API->>EA: POST /messages (validated SQL + params)
+    EA->>MCP: call tool execute_sql(sql, params)
+    MCP->>PG: SET LOCAL statement_timeout=...; SELECT ...
+    PG-->>MCP: rows (truncated to max_rows)
+    MCP-->>EA: {columns, rows, row_count, truncated}
+    EA-->>API: JSON {direct_answer, result_preview}
+    API->>J: span: executor_node
+  end
+
+  API->>API: final_node (format response)
+  API->>CP: save updated state
+  CP-->>API: ok
+  API-->>UI: JSON response
+  UI-->>U: Render answer + SQL popover
+end
+```
+
 ## 🧱 Data Flow Diagram (DFD)
 
 ```mermaid
