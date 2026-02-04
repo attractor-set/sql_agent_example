@@ -122,79 +122,76 @@ sequenceDiagram
 autonumber
 actor U as User
 participant UI as Streamlit UI
-participant API as API (LangGraph Orchestrator)
+participant API as API
 participant IA as Intent Agent
 participant SA as Schema Agent
-participant GA as SQL-Gen Agent
-participant VA as SQL-Validator Agent
-participant EA as SQL-Executor Agent
+participant GA as SQL Gen Agent
+participant VA as SQL Validator Agent
+participant EA as SQL Executor Agent
 participant MCP as MCP Server
-participant PG as Postgres (appdb + pgvector)
-participant CP as Checkpointer (Postgres)
+participant PG as Postgres
+participant CP as Checkpointer
 participant J as Jaeger
 
-U->>UI: Enter question
-UI->>API: POST /chat {content, thread_id}
-API->>J: Start trace/span
-API->>CP: Load state by thread_id
-CP-->>API: history/messages
+U->>UI: Ask question
+UI->>API: POST chat
+API->>J: Start trace
+API->>CP: Load state
+CP-->>API: State
 
-API->>IA: POST /messages (history + latest msg)
-IA->>MCP: Get intent prompt/tools
-MCP-->>IA: prompt/tools
-IA-->>API: route = schema OR final
+API->>IA: Send messages
+IA->>MCP: Get prompt
+MCP-->>IA: Prompt
+IA-->>API: Route
 
-alt route == final
-  API->>API: final_node (direct answer)
-  API->>CP: Save updated state
-  CP-->>API: ok
-  API-->>UI: JSON {direct_answer}
-  UI-->>U: Render answer
-else route == schema
-  API->>SA: POST /messages
-  SA->>MCP: Tool call schema_search or introspect_db
-  MCP->>PG: SELECT (introspection/RAG)
-  PG-->>MCP: rows
-  MCP-->>SA: schema context
-  SA-->>API: schema_context
+alt Route is final
+  API->>API: Build final answer
+  API->>CP: Save state
+  CP-->>API: OK
+  API-->>UI: Response
+  UI-->>U: Show answer
+else Route is schema
+  API->>SA: Send messages
+  SA->>MCP: Call schema tools
+  MCP->>PG: Query schema data
+  PG-->>MCP: Rows
+  MCP-->>SA: Tool result
+  SA-->>API: Schema context
 
-  API->>GA: POST /messages (with schema_context)
-  GA->>MCP: Optional tool calls (join cards/schema_search)
-  MCP->>PG: SELECT (metadata/RAG)
-  PG-->>MCP: rows
-  MCP-->>GA: tool results
-  GA-->>API: SQL draft + params
+  API->>GA: Send messages
+  GA->>MCP: Optional tools
+  MCP->>PG: Query metadata
+  PG-->>MCP: Rows
+  MCP-->>GA: Tool result
+  GA-->>API: SQL draft
 
-  loop Validate up to 3 attempts
-    API->>VA: POST /messages (SQL draft + params)
-    VA->>MCP: Tool call validate_sql
-    MCP-->>VA: decision pass OR rework; issues/feedback
-    VA-->>API: decision + route
+  loop Validate attempts
+    API->>VA: Send SQL draft
+    VA->>MCP: Call validate tool
+    MCP-->>VA: Validation result
+    VA-->>API: Decision
 
-    alt route == direct_answer
-      API->>API: final_node (fallback clarifying questions)
-      API->>CP: Save updated state
-      CP-->>API: ok
-      API-->>UI: JSON {direct_answer}
-      UI-->>U: Render answer
-    else route == sql_pipeline
-      alt decision == rework
-        API->>GA: POST /messages (validator feedback)
-        GA-->>API: Revised SQL draft + params
-      else decision == pass
-        API->>EA: POST /messages (validated SQL + params)
-        EA->>MCP: Tool call execute_sql(sql, params)
-        MCP->>PG: SET LOCAL statement_timeout; SELECT ...
-        PG-->>MCP: rows (maybe truncated)
-        MCP-->>EA: result set
-        EA-->>API: direct_answer + result preview
-
-        API->>API: final_node (format response)
-        API->>CP: Save updated state
-        CP-->>API: ok
-        API-->>UI: JSON response (+ SQL popover data)
-        UI-->>U: Render answer + SQL details
-      end
+    alt Decision is direct_answer
+      API->>API: Build fallback answer
+      API->>CP: Save state
+      CP-->>API: OK
+      API-->>UI: Response
+      UI-->>U: Show answer
+    else Decision is rework
+      API->>GA: Send feedback
+      GA-->>API: Revised SQL
+    else Decision is pass
+      API->>EA: Send validated SQL
+      EA->>MCP: Call execute tool
+      MCP->>PG: Run SELECT
+      PG-->>MCP: Rows
+      MCP-->>EA: Result set
+      EA-->>API: Answer and data
+      API->>API: Format final answer
+      API->>CP: Save state
+      CP-->>API: OK
+      API-->>UI: Response
+      UI-->>U: Show answer
     end
   end
 end
