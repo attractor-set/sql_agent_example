@@ -177,77 +177,55 @@ MCPServer --> Postgres : queries
 sequenceDiagram
 autonumber
 actor U as User
-participant UI as Streamlit UI
+participant UI as Streamlit
 participant API as API
-participant IA as Intent Agent
-participant SA as Schema Agent
-participant GA as SQL Gen Agent
-participant VA as SQL Validator Agent
-participant EA as SQL Executor Agent
-participant MCP as MCP Server
+participant IA as IntentAgent
+participant SA as SchemaAgent
+participant GA as SQLGenAgent
+participant VA as ValidatorAgent
+participant EA as ExecutorAgent
+participant MCP as MCP
 participant PG as Postgres
 participant CP as Checkpointer
-participant J as Jaeger
 
 U->>UI: Ask question
 UI->>API: POST chat
-API->>J: Start trace
 API->>CP: Load state
 CP-->>API: State
 
-API->>IA: Send messages
-IA->>MCP: Get prompt
-MCP-->>IA: Prompt
+API->>IA: Messages
 IA-->>API: Route
 
 alt Route is final
-  API->>API: Build final answer
-  API->>CP: Save state
-  CP-->>API: OK
-  API-->>UI: Response
-  UI-->>U: Show answer
+  API-->>UI: Direct answer
 else Route is schema
-  API->>SA: Send messages
-  SA->>MCP: Call schema tools
-  MCP->>PG: Query schema data
+  API->>SA: Messages
+  SA->>MCP: Schema tools
+  MCP->>PG: Query
   PG-->>MCP: Rows
-  MCP-->>SA: Tool result
+  MCP-->>SA: Result
   SA-->>API: Schema context
 
-  API->>GA: Send messages
-  GA->>MCP: Optional tools
-  MCP->>PG: Query metadata
-  PG-->>MCP: Rows
-  MCP-->>GA: Tool result
+  API->>GA: Messages
   GA-->>API: SQL draft
 
-  loop Validate attempts
-    API->>VA: Send SQL draft
-    VA->>MCP: Call validate tool
-    MCP-->>VA: Validation result
-    VA-->>API: Decision
+  loop Validation attempts
+    API->>VA: SQL draft
+    VA->>MCP: validate_sql
+    MCP-->>VA: Result
+    VA-->>API: Outcome
 
-    alt Decision is direct_answer
-      API->>API: Build fallback answer
-      API->>CP: Save state
-      CP-->>API: OK
-      API-->>UI: Response
-      UI-->>U: Show answer
-    else Decision is rework
-      API->>GA: Send feedback
+    alt Outcome is rework
+      API->>GA: Feedback
       GA-->>API: Revised SQL
-    else Decision is pass
-      API->>EA: Send validated SQL
-      EA->>MCP: Call execute tool
-      MCP->>PG: Run SELECT
+    else Outcome is done
+      API->>EA: Validated SQL
+      EA->>MCP: execute_sql
+      MCP->>PG: SELECT
       PG-->>MCP: Rows
-      MCP-->>EA: Result set
-      EA-->>API: Answer and data
-      API->>API: Format final answer
-      API->>CP: Save state
-      CP-->>API: OK
-      API-->>UI: Response
-      UI-->>U: Show answer
+      MCP-->>EA: Result
+      EA-->>API: Answer
+      API-->>UI: Final answer
     end
   end
 end
