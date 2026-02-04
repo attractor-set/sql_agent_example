@@ -10,3 +10,9 @@ langchain-openai
 langchain-mcp-adapters
 
 python-dotenv
+
+opentelemetry-api 
+opentelemetry-sdk 
+opentelemetry-instrumentation-fastapi 
+opentelemetry-instrumentation-requests 
+opentelemetry-exporter-otlp-proto-grpc
