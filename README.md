@@ -16,128 +16,11 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   - SQL validation & retries  
   - Secure SQL execution  
   
-  ```mermaid
-  classDiagram
-  direction LR
-
-  class GraphState {
-    +messages: List~AnyMessage~
-    +history: List~AnyMessage~
-  }
-
-  class BaseMessage {
-    +content: Any
-    +name: str
-    +additional_kwargs: dict
-  }
-
-  class HumanMessage
-  class AIMessage
-
-  BaseMessage <|-- HumanMessage
-  BaseMessage <|-- AIMessage
-
-  GraphState "1" o-- "*" BaseMessage : messages/history
-
-  class Orchestrator {
-    +__call__(state)
-  }
-
-  class IntentAgent
-  class SchemaAgent
-  class SQLGenAgent
-  class SQLValidatorAgent
-  class SQLExecutorAgent
-
-  Orchestrator --> IntentAgent
-  Orchestrator --> SchemaAgent
-  Orchestrator --> SQLGenAgent
-  Orchestrator --> SQLValidatorAgent
-  Orchestrator --> SQLExecutorAgent
-
-  GraphState --> Orchestrator
-  ```
-
 - 🧠 **LangGraph State Machine**
   - Conditional routing  
   - Retry loops  
   - Persistent state via PostgreSQL checkpointer  
   
-  ```mermaid
-  flowchart LR
-  %% External Entities
-  U[/"User"/]
-  UI[/"Streamlit Frontend"/]
-  J[/"Jaeger UI (Tracing)"/]
-
-  %% System Boundary
-  subgraph S["System: SQL Agent Example"]
-    API["P0 API / LangGraph Orchestrator<br/>(FastAPI + StateGraph)"]
-
-    P1["P1 Intent Agent<br/>(intent classification & routing)"]
-    P2["P2 Schema Agent<br/>(schema understanding)"]
-    P3["P3 SQL Gen Agent<br/>(generate SQL draft)"]
-    P4["P4 SQL Validator Agent<br/>(validation & retry policy)"]
-    P5["P5 SQL Executor Agent<br/>(execute SQL & format result)"]
-    P6["P6 Final Node<br/>(compact history & response)"]
-
-    D1[("D1 Checkpointer (PostgreSQL)<br/>state & history")]
-    D2[("D2 PostgreSQL DB<br/>business tables")]
-    D3[("D3 pgvector / RAG Store<br/>schema docs & embeddings")]
-
-    MCP["MCP Server<br/>(schema lookup & SQL tools)"]
-  end
-
-  %% Entry
-  U -->|NL question| UI
-  UI -->|POST /chat<br/>messages + thread_id| API
-
-  %% Intent branching
-  API -->|messages| P1
-  P1 -->|route decision| API
-
-  %% Short path (direct.png)
-  API -->|if direct_answer| P6
-  P6 -->|final response| API
-  API -->|Answer (NL)| UI
-  UI -->|Display answer| U
-
-  %% Long path (complete.png)
-  API -->|if sql_pipeline| P2
-  P2 -->|schema context| API
-
-  API -->|messages + schema| P3
-  P3 -->|SQL draft + params| API
-
-  API -->|SQL + policy| P4
-  P4 -->|pass / rework + feedback| API
-
-  %% Retry loop
-  API -->|if rework| P3
-
-  API -->|if pass| P5
-  P5 -->|rows + summary| API
-
-  API -->|finalize| P6
-
-  %% Data stores
-  API <--> |read/write| D1
-
-  P2 -->|schema lookup| MCP
-  MCP <--> |embeddings| D3
-
-  P5 -->|execute_sql| MCP
-  MCP <--> |SELECT| D2
-
-  %% Observability
-  API -->|OTEL spans| J
-  P1 -->|OTEL spans| J
-  P2 -->|OTEL spans| J
-  P3 -->|OTEL spans| J
-  P4 -->|OTEL spans| J
-  P5 -->|OTEL spans| J
-  ```
-
 - 🧬 **RAG over Database Schema**
   - pgvector + embeddings  
   - Schema and metadata retrieval via MCP server  
@@ -150,7 +33,6 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   <p align="center">
     <img src="png/opentelemetry.png" alt="Jaeger Traces" width="900">
   </p>
-
 
 - 🖥 **Streamlit Frontend**
   - Chat interface  
@@ -168,6 +50,120 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   <p align="center">
     <img src="png/docker.png" alt="Docker Services" width="900">
   </p>
+
+---
+
+## 🧱 Diagrams
+
+```mermaid
+classDiagram
+direction LR
+
+class GraphState {
+  +messages: List~AnyMessage~
+  +history: List~AnyMessage~
+}
+
+class BaseMessage {
+  +content: Any
+  +name: str
+  +additional_kwargs: dict
+}
+
+class HumanMessage
+class AIMessage
+
+BaseMessage <|-- HumanMessage
+BaseMessage <|-- AIMessage
+
+GraphState "1" o-- "*" BaseMessage : messages/history
+
+class Orchestrator {
+  +__call__(state)
+}
+
+class IntentAgent
+class SchemaAgent
+class SQLGenAgent
+class SQLValidatorAgent
+class SQLExecutorAgent
+
+Orchestrator --> IntentAgent
+Orchestrator --> SchemaAgent
+Orchestrator --> SQLGenAgent
+Orchestrator --> SQLValidatorAgent
+Orchestrator --> SQLExecutorAgent
+
+GraphState --> Orchestrator
+```
+
+```mermaid
+flowchart LR
+
+U[User]
+UI[Streamlit Frontend]
+J[Jaeger UI]
+
+subgraph S[System: SQL Agent Example]
+  API[API / LangGraph Orchestrator]
+
+  P1[Intent Agent]
+  P2[Schema Agent]
+  P3[SQL Generation Agent]
+  P4[SQL Validator Agent]
+  P5[SQL Executor Agent]
+  P6[Final Node]
+
+  D1[(Checkpointer DB)]
+  D2[(PostgreSQL DB)]
+  D3[(pgvector RAG Store)]
+
+  MCP[MCP Server]
+end
+
+U --> UI
+UI --> API
+
+API --> P1
+P1 --> API
+
+API --> P6
+P6 --> API
+API --> UI
+UI --> U
+
+API --> P2
+P2 --> API
+
+API --> P3
+P3 --> API
+
+API --> P4
+P4 --> API
+
+API --> P3
+
+API --> P5
+P5 --> API
+
+API --> D1
+D1 --> API
+
+P2 --> MCP
+MCP --> D3
+D3 --> MCP
+
+P5 --> MCP
+MCP --> D2
+D2 --> MCP
+
+API --> J
+P1 --> J
+P2 --> J
+P3 --> J
+P4 --> J
+P5 --> J
+```
 
 ---
 
