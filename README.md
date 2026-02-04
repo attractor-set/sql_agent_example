@@ -93,8 +93,7 @@ AgentNode --> SchemaAgent
 AgentNode --> SQLGenAgent
 AgentNode --> SQLValidatorAgent
 AgentNode --> SQLExecutorAgent
-
-GraphState --> AgentNode
+AgentNode --* GraphState
 ```
 
 ## 🧱 Data Flow Diagram (DFD)
