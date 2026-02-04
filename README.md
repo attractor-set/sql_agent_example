@@ -78,7 +78,7 @@ BaseMessage <|-- AIMessage
 
 GraphState "1" o-- "*" BaseMessage : messages/history
 
-class Orchestrator {
+class AgentNode {
   +__call__(state)
 }
 
@@ -88,13 +88,13 @@ class SQLGenAgent
 class SQLValidatorAgent
 class SQLExecutorAgent
 
-Orchestrator --> IntentAgent
-Orchestrator --> SchemaAgent
-Orchestrator --> SQLGenAgent
-Orchestrator --> SQLValidatorAgent
-Orchestrator --> SQLExecutorAgent
+AgentNode --> IntentAgent
+AgentNode --> SchemaAgent
+AgentNode --> SQLGenAgent
+AgentNode --> SQLValidatorAgent
+AgentNode --> SQLExecutorAgent
 
-GraphState --> Orchestrator
+GraphState --> AgentNode
 ```
 
 ## 🧱 Data Flow Diagram (DFD)
