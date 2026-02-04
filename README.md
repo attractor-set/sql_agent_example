@@ -100,69 +100,73 @@ GraphState --> Orchestrator
 ```mermaid
 flowchart LR
 
-U[User]
+%% External entities
+User[User]
 UI[Streamlit Frontend]
-J[Jaeger UI]
+Jaeger[Jaeger UI]
 
-subgraph S[System: SQL Agent Example]
+%% System boundary
+subgraph SYS[System: SQL Agent Example]
   API[API / LangGraph Orchestrator]
 
-  P1[Intent Agent]
-  P2[Schema Agent]
-  P3[SQL Generation Agent]
-  P4[SQL Validator Agent]
-  P5[SQL Executor Agent]
-  P6[Final Node]
+  Intent[Intent Agent]
+  SQLGen[SQL Generation Agent]
+  Schema[Schema Agent]
+  Validator[SQL Validator Agent]
+  Executor[SQL Executor Agent]
+  Final[Final Node]
 
-  D1[(Checkpointer DB)]
-  D2[(PostgreSQL DB)]
-  D3[(pgvector RAG Store)]
-
-  MCP[MCP Server]
+  Checkpoint[(Checkpointer DB)]
 end
 
-U --> UI
+%% Tooling & data stores
+MCP[MCP Server]
+DB[(PostgreSQL DB)]
+RAG[(pgvector RAG Store)]
+
+%% Entry flow
+User --> UI
 UI --> API
 
-API --> P1
-P1 --> API
+%% Orchestration
+API --> Intent
+Intent --> API
 
-API --> P6
-P6 --> API
-API --> UI
-UI --> U
+API --> SQLGen
+SQLGen --> API
 
-API --> P2
-P2 --> API
+API --> Schema
+Schema --> API
 
-API --> P3
-P3 --> API
+API --> Validator
+Validator --> API
 
-API --> P4
-P4 --> API
+API --> Executor
+Executor --> API
 
-API --> P3
+API --> Final
+Final --> API
 
-API --> P5
-P5 --> API
+%% Data persistence
+API --> Checkpoint
+Checkpoint --> API
 
-API --> D1
-D1 --> API
+%% Tool access
+Executor --> MCP
+Schema --> MCP
+Validator --> MCP
+SQLGen --> MCP
 
-P2 --> MCP
-MCP --> D3
-D3 --> MCP
+MCP --> DB
+MCP --> RAG
 
-P5 --> MCP
-MCP --> D2
-D2 --> MCP
-
-API --> J
-P1 --> J
-P2 --> J
-P3 --> J
-P4 --> J
-P5 --> J
+%% Observability
+API --> Jaeger
+Intent --> Jaeger
+SQLGen --> Jaeger
+Schema --> Jaeger
+Validator --> Jaeger
+Executor --> Jaeger
 ```
 
 ---
