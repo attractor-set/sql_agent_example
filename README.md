@@ -56,7 +56,7 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   Orchestrator --> SQLExecutorAgent
 
   GraphState --> Orchestrator
-
+  ```
 
 - 🧠 **LangGraph State Machine**
   - Conditional routing  
@@ -136,7 +136,7 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   P3 -->|OTEL spans| J
   P4 -->|OTEL spans| J
   P5 -->|OTEL spans| J
-
+  ```
 
 - 🧬 **RAG over Database Schema**
   - pgvector + embeddings  
