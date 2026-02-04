@@ -39,20 +39,7 @@ Natural-language questions are routed through specialized agents (Intent, Schema
 
   GraphState "1" o-- "*" BaseMessage : messages/history
 
-  class StateGraph {
-    +add_node()
-    +add_edge()
-    +add_conditional_edges()
-    +compile()
-  }
-
-  class CompiledGraph {
-    +ainvoke()
-  }
-
-  StateGraph --> CompiledGraph
-
-  class AgentNode {
+  class Orchestrator {
     +__call__(state)
   }
 
@@ -62,11 +49,13 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   class SQLValidatorAgent
   class SQLExecutorAgent
 
-  AgentNode --> IntentAgent
-  AgentNode --> SchemaAgent
-  AgentNode --> SQLGenAgent
-  AgentNode --> SQLValidatorAgent
-  AgentNode --> SQLExecutorAgent
+  Orchestrator --> IntentAgent
+  Orchestrator --> SchemaAgent
+  Orchestrator --> SQLGenAgent
+  Orchestrator --> SQLValidatorAgent
+  Orchestrator --> SQLExecutorAgent
+
+  GraphState --> Orchestrator
 
 
 - 🧠 **LangGraph State Machine**
