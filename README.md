@@ -110,7 +110,7 @@ class MCPServer {
 }
 
 class AgentService {
-  +POST /messages(List~Message~)
+  +POST /messages(List~AnyMessage~)
   +LLM call
   +MCP tools via client
 }
