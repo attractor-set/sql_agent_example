@@ -1,0 +1,4 @@
+fastmcp
+psycopg[binary]
+langchain-openai
+langchain-postgres

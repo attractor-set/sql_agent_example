@@ -1,0 +1,204 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pg-local
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/00_schema.sql:/docker-entrypoint-initdb.d/00_schema.sql
+      - ./sql/01_extensions.sql:/docker-entrypoint-initdb.d/01_extensions.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+  rag-init:
+    build:
+      context: ./rag-init
+    container_name: rag-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      CONNECTION: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      RAG_RESET: "false"
+    restart: "no"
+
+  mcp-server:
+    build:
+      context: ./mcp-server
+    container_name: mcp-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rag-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      CONNECTION: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+    ports:
+      - "3333:3333"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3333/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  intent-agent:
+    build:
+      context: ./intent-agent
+    container_name: intent-agent
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  schema-agent:
+    build:
+      context: ./schema-agent
+    container_name: schema-agent
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  sql-gen-agent:
+    build:
+      context: ./sql-gen-agent
+    container_name: sql-gen-agent
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8003/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  sql-validator-agent:
+    build:
+      context: ./sql-validator-agent
+    container_name: sql-validator-agent
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8004/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  sql-executor-agent:
+    build:
+      context: ./sql-executor-agent
+    container_name: sql-executor-agent
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8005/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+    container_name: api
+    depends_on:
+      intent-agent:
+        condition: service_healthy
+      schema-agent:
+        condition: service_healthy
+      sql-gen-agent:
+        condition: service_healthy
+      sql-validator-agent:
+        condition: service_healthy
+      sql-executor-agent:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      CONNECTION: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"  
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  streamlit-frontend:
+    build:
+      context: ./streamlit-frontend
+    container_name: streamlit-frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: "http://api:8000/chat"
+      CONNECT_TIMEOUT: "5"
+      READ_TIMEOUT: "180"
+    ports:
+      - "8501:8501"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8501/_stcore/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  pgdata:

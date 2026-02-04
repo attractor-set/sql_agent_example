@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+psycopg[binary]
+
+pydantic
+
+langgraph-checkpoint-postgres
+langchain
+langchain-openai
+langchain-mcp-adapters
+
+python-dotenv

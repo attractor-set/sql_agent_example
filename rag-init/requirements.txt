@@ -1,0 +1,4 @@
+psycopg[binary]
+langchain
+langchain-openai
+langchain-postgres
