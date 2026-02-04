@@ -61,39 +61,58 @@ direction LR
 
 class GraphState {
   +messages: List~AnyMessage~
-  +history: List~AnyMessage~
+  +history: List~AnyMessage~  <<add_messages>>
 }
 
 class BaseMessage {
   +content: Any
-  +name: str
+  +name: str?
   +additional_kwargs: dict
 }
-
 class HumanMessage
 class AIMessage
-
 BaseMessage <|-- HumanMessage
 BaseMessage <|-- AIMessage
 
 GraphState "1" o-- "*" BaseMessage : messages/history
 
-class AgentNode {
-  +__call__(state)
+class StateGraph~GraphState~ {
+  +add_node(name, fn)
+  +add_edge(src, dst)
+  +add_conditional_edges(src, router, map)
+  +compile(checkpointer)
 }
 
-class IntentAgent
-class SchemaAgent
-class SQLGenAgent
-class SQLValidatorAgent
-class SQLExecutorAgent
+class RouterFn {
+  +__call__(state) route
+}
 
-AgentNode --> IntentAgent
-AgentNode --> SchemaAgent
-AgentNode --> SQLGenAgent
-AgentNode --> SQLValidatorAgent
-AgentNode --> SQLExecutorAgent
-AgentNode --* GraphState
+class NodeFn {
+  +__call__(state) GraphState
+}
+
+class intent_node
+class schema_node
+class sqlgen_node
+class validator_node
+class executor_node
+class final_node
+
+NodeFn <|.. intent_node
+NodeFn <|.. schema_node
+NodeFn <|.. sqlgen_node
+NodeFn <|.. validator_node
+NodeFn <|.. executor_node
+NodeFn <|.. final_node
+
+class intent_route
+class validate_route
+RouterFn <|.. intent_route
+RouterFn <|.. validate_route
+
+StateGraph~GraphState~ --> GraphState : state type
+StateGraph~GraphState~ --> NodeFn : nodes
+StateGraph~GraphState~ --> RouterFn : conditional routing
 ```
 
 ## 🧱 Data Flow Diagram (DFD)
@@ -110,64 +129,61 @@ Jaeger[Jaeger UI]
 subgraph SYS[System: SQL Agent Example]
   API[API / LangGraph Orchestrator]
 
-  Intent[Intent Agent]
-  SQLGen[SQL Generation Agent]
-  Schema[Schema Agent]
-  Validator[SQL Validator Agent]
-  Executor[SQL Executor Agent]
+  Intent[Intent Node\n(calls Intent Agent)]
+  Schema[Schema Node\n(calls Schema Agent)]
+  SQLGen[SQLGen Node\n(calls SQL-Gen Agent)]
+  Validator[Validate Node\n(calls SQL-Validator Agent)]
+  Executor[Execute Node\n(calls SQL-Executor Agent)]
   Final[Final Node]
 
-  Checkpoint[(Checkpointer DB)]
+  %% Persistence (actually Postgres checkpointer)
+  Checkpoint[(LangGraph Checkpointer\n(Postgres))]
 end
 
-%% Tooling & data stores
-MCP[MCP Server]
-DB[(PostgreSQL DB)]
-RAG[(pgvector RAG Store)]
+%% Tooling + datastore (pgvector lives inside Postgres in this project)
+MCP[MCP Server\n(prompts + tools)]
+PG[(PostgreSQL (appdb)\n+ tables\n+ pgvector\n+ checkpointer data)]
 
 %% Entry flow
-User --> UI
-UI --> API
+User --> UI --> API
 
-%% Orchestration
+%% LangGraph entry point
 API --> Intent
-Intent --> API
 
-API --> SQLGen
-SQLGen --> API
+%% Conditional routing after intent (real code: intent_route)
+Intent -->|route: schema| Schema
+Intent -->|route: final| Final
 
-API --> Schema
-Schema --> API
+%% Main pipeline (real edges)
+Schema --> SQLGen --> Validator
 
-API --> Validator
-Validator --> API
+%% Conditional routing after validate (real code: validate_route)
+Validator -->|route: execute| Executor
+Validator -->|route: sqlgen (rework)| SQLGen
+Validator -->|route: final (fallback)| Final
 
-API --> Executor
-Executor --> API
+%% Finish
+Executor --> Final --> API
 
-API --> Final
-Final --> API
+%% State persistence (real: builder.compile(checkpointer=...))
+API <--> Checkpoint
+Checkpoint --- PG
 
-%% Data persistence
-API --> Checkpoint
-Checkpoint --> API
-
-%% Tool access
-Executor --> MCP
+%% Tool access (real: agents call MCP tools)
 Schema --> MCP
-Validator --> MCP
 SQLGen --> MCP
+Validator --> MCP
+Executor --> MCP
+MCP --> PG
 
-MCP --> DB
-MCP --> RAG
-
-%% Observability
+%% Observability (simplified)
 API --> Jaeger
 Intent --> Jaeger
-SQLGen --> Jaeger
 Schema --> Jaeger
+SQLGen --> Jaeger
 Validator --> Jaeger
 Executor --> Jaeger
+Final --> Jaeger
 ```
 
 ---
