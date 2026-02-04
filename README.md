@@ -65,97 +65,78 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   
   ```mermaid
   flowchart LR
-  %% =========================
   %% External Entities
-  %% =========================
   U[/"User"/]
   UI[/"Streamlit Frontend"/]
   J[/"Jaeger UI (Tracing)"/]
 
-  %% =========================
   %% System Boundary
-  %% =========================
   subgraph S["System: SQL Agent Example"]
-    API["P0 API / LangGraph Orchestrator\n(FastAPI + StateGraph)"]
+    API["P0 API / LangGraph Orchestrator<br/>(FastAPI + StateGraph)"]
 
-    P1["P1 Intent Agent\n(intent classification & routing)"]
-    P2["P2 Schema Agent\n(schema understanding)"]
-    P3["P3 SQL Generation Agent\ngenerate SQL draft"]
-    P4["P4 SQL Validator Agent\nvalidation & retry policy"]
-    P5["P5 SQL Executor Agent\nexecute SQL & format result"]
-    P6["P6 Final Node\ncompact history & response"]
+    P1["P1 Intent Agent<br/>(intent classification & routing)"]
+    P2["P2 Schema Agent<br/>(schema understanding)"]
+    P3["P3 SQL Gen Agent<br/>(generate SQL draft)"]
+    P4["P4 SQL Validator Agent<br/>(validation & retry policy)"]
+    P5["P5 SQL Executor Agent<br/>(execute SQL & format result)"]
+    P6["P6 Final Node<br/>(compact history & response)"]
 
-    %% Data Stores
-    D1[("D1 Checkpointer (PostgreSQL)\nconversation state & history")]
-    D2[("D2 PostgreSQL Database\nbusiness tables")]
-    D3[("D3 pgvector / RAG Store\nschema docs & embeddings")]
+    D1[("D1 Checkpointer (PostgreSQL)<br/>state & history")]
+    D2[("D2 PostgreSQL DB<br/>business tables")]
+    D3[("D3 pgvector / RAG Store<br/>schema docs & embeddings")]
 
-    %% Tooling Layer
-    MCP["MCP Server\n(schema lookup & SQL tools)"]
+    MCP["MCP Server<br/>(schema lookup & SQL tools)"]
   end
 
-  %% =========================
   %% Entry
-  %% =========================
-  U -->|Natural language question| UI
-  UI -->|POST /chat\nmessages + thread_id| API
+  U -->|NL question| UI
+  UI -->|POST /chat<br/>messages + thread_id| API
 
-  %% =========================
-  %% Intent & Branching
-  %% =========================
+  %% Intent branching
   API -->|messages| P1
-  P1 -->|route: direct_answer OR sql_pipeline| API
+  P1 -->|route decision| API
 
-  %% =========================
-  %% SHORT PATH (direct.png)
-  %% =========================
-  API -->|if route = direct_answer:\nfinal answer| P6
-  P6 -->|User response| API
+  %% Short path (direct.png)
+  API -->|if direct_answer| P6
+  P6 -->|final response| API
   API -->|Answer (NL)| UI
   UI -->|Display answer| U
 
-  %% =========================
-  %% LONG PATH (complete.png)
-  %% =========================
-  API -->|if route = sql_pipeline:\nmessages + context request| P2
-  P2 -->|schema context / retrieved facts| API
+  %% Long path (complete.png)
+  API -->|if sql_pipeline| P2
+  P2 -->|schema context| API
 
-  API -->|messages + schema context| P3
-  P3 -->|SQL draft + parameters| API
+  API -->|messages + schema| P3
+  P3 -->|SQL draft + params| API
 
-  API -->|SQL draft + safety policy| P4
-  P4 -->|decision: pass or rework\nvalidation feedback| API
+  API -->|SQL + policy| P4
+  P4 -->|pass / rework + feedback| API
 
   %% Retry loop
-  API -->|if rework:\nfeedback + history| P3
+  API -->|if rework| P3
 
-  API -->|if pass:\nvalidated SQL + params| P5
-  P5 -->|query result rows + summary| API
+  API -->|if pass| P5
+  P5 -->|rows + summary| API
 
-  API -->|final answer + compact history| P6
+  API -->|finalize| P6
 
-  %% =========================
-  %% Data Stores
-  %% =========================
-  API <--> |read/write state| D1
+  %% Data stores
+  API <--> |read/write| D1
 
-  %% Schema / RAG via MCP
   P2 -->|schema lookup| MCP
-  MCP <--> |schema metadata & embeddings| D3
+  MCP <--> |embeddings| D3
 
-  %% SQL execution via MCP
-  P5 -->|execute_sql tool call| MCP
-  MCP <--> |SELECT queries| D2
+  P5 -->|execute_sql| MCP
+  MCP <--> |SELECT| D2
 
-  %% =========================
   %% Observability
-  %% =========================
-  API -->|OpenTelemetry spans:\nintent_routing, graph_execution,\nagent_node_*| J
+  API -->|OTEL spans| J
   P1 -->|OTEL spans| J
   P2 -->|OTEL spans| J
   P3 -->|OTEL spans| J
   P4 -->|OTEL spans| J
   P5 -->|OTEL spans| J
+
 
 - 🧬 **RAG over Database Schema**
   - pgvector + embeddings  
