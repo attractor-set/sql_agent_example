@@ -111,7 +111,7 @@ class MCPServer {
 
 class AgentRuntime {
   +POST /messages(List~AnyMessage~)
-  +Authorization: Bearer token
+  <<enforces Authorization: Bearer>>
   +LLM call
   +MCP tool/prompt calls
 }
@@ -302,6 +302,14 @@ Intent Agent
                    ↓
                Final Answer + Trace
 ```
+
+All agent services are instantiated from a shared Agent Runtime.
+The runtime is responsible for:
+- Bearer token authentication
+- Prompt loading
+- Tool access via MCP
+- Structured response enforcement
+
 ---
 
 ## 🔐 Service-to-Service Authentication (Bearer Token)
@@ -310,6 +318,7 @@ Communication between the **Orchestrator API** and all **Agent services** is pro
 
 ### How it works
 
+- Authentication is enforced centrally by the Agent Runtime
 - A shared secret token (`AGENT_API_TOKEN`) is configured via environment variables
 - The **Orchestrator** includes the token in every agent request: Authorization: Bearer <AGENT_API_TOKEN>
 - Each **Agent Runtime** validates the token before processing `/messages`
@@ -348,13 +357,17 @@ sql_agent_example-main/
 │
 ├── api/                     # LangGraph orchestrator (FastAPI)
 │   ├── app/
+│   │   ├── __init__.py
 │   │   ├── graph.py         # StateGraph + routing logic
 │   │   └── main.py
 │   ├── Dockerfile
 │   └── requirements.txt
 │
 ├── agent-gen/               # Generic agent runtime (all agents share this image)
-│   ├── main.py              # FastAPI /messages endpoint + LLM invocation
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py              # FastAPI /messages endpoint + LLM invocation
+│   │   └── auth.py              # Bearer token validation for /messages
 │   ├── Dockerfile
 │   └── requirements.txt
 │
@@ -452,6 +465,12 @@ All services include **health checks** and start in the correct order.
 - ✅ Statement timeout enforcement
 - ✅ Result row truncation
 - 🔐 Authenticated agent access via Bearer token (orchestrator → agents)
+
+### Trust Model
+
+The system assumes a trusted internal network (Docker or cluster-local).
+Bearer authentication protects against accidental or malicious lateral access
+to agent services.
 
 ---
 
