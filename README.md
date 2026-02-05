@@ -15,12 +15,12 @@ Natural-language questions are routed through specialized agents (Intent, Schema
   - SQL generation  
   - SQL validation & retries  
   - Secure SQL execution  
-  
+
 - 🧠 **LangGraph State Machine**
   - Conditional routing  
   - Retry loops  
   - Persistent state via PostgreSQL checkpointer  
-  
+
 - 🧬 **RAG over database schema and metadata (pgvector)**
   - pgvector + embeddings  
   - Schema and metadata retrieval via MCP server  
@@ -109,10 +109,10 @@ class MCPServer {
   +prompts: intent/schema/sqlgen/validator/executor
 }
 
-class AgentService {
+class AgentRuntime {
   +POST /messages(List~AnyMessage~)
   +LLM call
-  +MCP tools via client
+  +MCP tool/prompt calls
 }
 
 class IntentAgent
@@ -120,11 +120,11 @@ class SchemaAgent
 class SQLGenAgent
 class SQLValidatorAgent
 class SQLExecutorAgent
-AgentService <|-- IntentAgent
-AgentService <|-- SchemaAgent
-AgentService <|-- SQLGenAgent
-AgentService <|-- SQLValidatorAgent
-AgentService <|-- SQLExecutorAgent
+AgentRuntime <|-- IntentAgent
+AgentRuntime <|-- SchemaAgent
+AgentRuntime <|-- SQLGenAgent
+AgentRuntime <|-- SQLValidatorAgent
+AgentRuntime <|-- SQLExecutorAgent
 
 class NodeFn {
   +call(state: GraphState) GraphState
@@ -167,7 +167,7 @@ sqlgen_node --> SQLGenAgent : HTTP call
 validator_node --> SQLValidatorAgent : HTTP call
 executor_node --> SQLExecutorAgent : HTTP call
 
-AgentService --> MCPServer : tool/prompt calls
+AgentRuntime --> MCPServer : tool/prompt calls
 MCPServer --> Postgres : queries
 ```
 
@@ -305,28 +305,43 @@ Intent Agent
 ## 📁 Project Structure
 
 ```
-sql_agent_example/
+sql_agent_example-main/
 │
 ├── api/                     # LangGraph orchestrator (FastAPI)
 │   ├── app/
 │   │   ├── graph.py         # StateGraph + routing logic
 │   │   └── main.py
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── requirements.txt
 │
-├── intent-agent/             # Intent classification agent
-├── schema-agent/             # DB schema understanding agent
-├── sql-gen-agent/            # SQL generation agent
-├── sql-validator-agent/      # SQL validation + retry policy
-├── sql-executor-agent/       # Secure SQL execution agent
+├── agent-gen/               # Generic agent runtime (all agents share this image)
+│   ├── main.py              # FastAPI /messages endpoint + LLM invocation
+│   ├── Dockerfile
+│   └── requirements.txt
 │
-├── mcp-server/               # MCP tools + schema/RAG access
-├── rag-init/                 # Vector store bootstrap
+├── mcp-server/              # MCP tools + prompts (schema/RAG/validation/execution)
+│   ├── mcp_server.py
+│   ├── Dockerfile
+│   └── requirements.txt
 │
-├── streamlit-frontend/       # Chat UI
+├── rag-init/                # Vector store bootstrap (pgvector KB seeding)
+│   ├── rag_setup.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── streamlit-frontend/      # Chat UI
+│   ├── main.py
+│   ├── Dockerfile
+│   └── requirements.txt
 │
 ├── sql/
 │   ├── 00_schema.sql         # Sample schema
 │   └── 01_extensions.sql     # pgvector, extensions
+│
+├── png/                      # README assets
+│   ├── opentelemetry.png
+│   ├── streamlit.png
+│   └── docker.png
 │
 ├── docker-compose.yml
 ├── .env_example
