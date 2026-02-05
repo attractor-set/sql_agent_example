@@ -1,14 +1,16 @@
 import os
 import json
+from uuid import uuid4
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ProviderStrategy
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from typing import Any, List
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 from mcp.types import TextContent
-from typing import Any, List, Literal, Optional, Union
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
@@ -24,7 +26,10 @@ except Exception as _:
 
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-5.1")
 DEBUG = os.getenv("DEBUG", "false") == "true"
-LLM = ChatOpenAI(model=LLM_MODEL, temperature=0)
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
+OUTPUT_SCHEMA = os.getenv("OUTPUT_SCHEMA")
+USE_TOOLS = os.getenv("USE_TOOLS", "false") == "true"
+AGENT_TITLE = os.getenv("AGENT_TITLE", str(uuid4()))
 
 class Message(BaseModel):
     role: Literal["human", "ai"]
@@ -46,22 +51,7 @@ class Message(BaseModel):
         return HumanMessage(content=self.content, name=self.name, additional_kwargs=self.additional_kwargs) \
                if self.role in ["human"] else \
                AIMessage(content=self.content if self.content else json.dumps(self.additional_kwargs), name=self.name, additional_kwargs=self.additional_kwargs)
-
-
-class ExecutionResult(BaseModel):
-    sql: str = None
-    params: List[Union[str, int, float, bool, None]] = Field(default_factory=list)
-    columns: List[str] = Field(default_factory=list)
-    rows: List[List[Any]] = Field(default_factory=list)
-    row_count: int = 0
-    truncated: bool = False
-
-
-class ExecutionPlan(BaseModel):
-    direct_answer: str
-    error: Optional[str] = None
-    result: Optional[ExecutionResult] = None
-
+    
 
 async def append_structured_content(request: MCPToolCallRequest, handler):
     result = await handler(request)
@@ -76,22 +66,29 @@ MCP_CLIENT = MultiServerMCPClient({"pg_rag": {"transport": "http",
                                               "url": os.getenv("MCP_URL", "http://mcp-server:3333/mcp")}},
                                   tool_interceptors=[append_structured_content])
 
+LLM = ChatOpenAI(model=LLM_MODEL, temperature=0)
+
 agent: Any = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global agent
-    prompt = await MCP_CLIENT.get_prompt('pg_rag', 'sql_executor_prompt')
-    tools = await MCP_CLIENT.get_tools()
-    agent = create_agent(model=LLM,
-                         tools=tools,
-                         system_prompt=prompt[0].content,
-                         response_format=ExecutionPlan,
-                         debug=DEBUG)
+    prompt = await MCP_CLIENT.get_prompt('pg_rag', SYSTEM_PROMPT)
+    params = dict(model=LLM,
+                  system_prompt=prompt[0].content,
+                  debug=DEBUG)
+    
+    if OUTPUT_SCHEMA:
+        params["response_format"] = ProviderStrategy(json.loads(OUTPUT_SCHEMA))
+    
+    if USE_TOOLS:
+        params["tools"] = await MCP_CLIENT.get_tools()
+    
+    agent = create_agent(**params)
     yield
     agent = None
 
-app = FastAPI(title="SQL Executor Agent Service", 
+app = FastAPI(title=AGENT_TITLE, 
               version="1.0.0",
               lifespan=lifespan)
 
@@ -106,8 +103,14 @@ async def messages(messages: List[Message]):
         raise HTTPException(status_code=503, detail="Agent is not initialized")
 
     try:
-        result = await agent.ainvoke({"messages": [message.to_message() for message in messages]})
+
+        payload = {"messages": [m.to_message() for m in messages]}
+        for msg in payload["messages"]:
+            logger.info("MSG type=%s name=%s content=%r", type(msg).__name__, getattr(msg, "name", None), getattr(msg, "content", None))
+
+        result = await agent.ainvoke(payload)
         return result["structured_response"]
     except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Agent invocation failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Agent invocation failed: {e}")
+
+

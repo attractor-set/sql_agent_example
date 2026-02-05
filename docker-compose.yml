@@ -74,13 +74,20 @@ services:
 
   intent-agent:
     build:
-      context: ./intent-agent
+      context: ./agent-gen
     container_name: intent-agent
     depends_on:
       mcp-server:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      USE_TOOLS: false
+      PORT: "8001"
+      AGENT_TITLE: "intent agent"
+      SYSTEM_PROMPT: "intent_agent_prompt"
+      OUTPUT_SCHEMA: >-
+        {"title":"IntentSpecification","type":"object","description":"Specification of the user's intent for data analysis.","properties":{"route":{"type":"string","description":"The processing route to use.","enum":["sql_pipeline","direct_answer"]},"direct_answer":{"type":"string","description":"The direct answer if route is 'direct_answer'.","nullable":true},"task_type":{"type":"string","description":"The type of analytical task.","enum":["aggregation","list","comparison","trend","distribution","existence_check","other"]},"metric":{"type":"object","description":"The metric to analyze.","nullable":true,"properties":{"name":{"type":"string","description":"The name of the metric."},"description":{"type":"string","description":"The description of the metric."}},"required":["name","description"],"additionalProperties":false},"dimensions":{"type":"array","description":"List of dimension field hints.","items":{"type":"string"},"default":[]},"filters":{"type":"array","description":"List of filters to apply.","items":{"type":"object","properties":{"field_hint":{"type":"string","description":"Hint for the field to filter on."},"operator":{"type":"string","description":"The filter operator.","enum":["=","!=",">",">=","<","<=","in","between","like"]},"value":{"type":"string","description":"The value to filter by as a string representation. For arrays or objects, use JSON string."}},"required":["field_hint","operator","value"],"additionalProperties":false},"default":[]},"time":{"type":"object","description":"Time specification for the query.","nullable":true,"properties":{"grain":{"type":"string","description":"The time grain for aggregation.","enum":["day","week","month","quarter","year","none"]},"range":{"type":"object","description":"The time range for the query.","properties":{"start":{"type":"string","description":"Start time (ISO format or relative).","nullable":true},"end":{"type":"string","description":"End time (ISO format or relative).","nullable":true}},"additionalProperties":false,"required":["start","end"]}},"required":["grain","range"],"additionalProperties":false},"sorting":{"type":"object","description":"Sorting specification.","nullable":true,"properties":{"field_hint":{"type":"string","description":"Hint for the field to sort by."},"direction":{"type":"string","description":"Sort direction.","enum":["asc","desc"]}},"required":["field_hint","direction"],"additionalProperties":false},"limit":{"type":"integer","description":"Limit for the number of results.","nullable":true,"minimum":1},"output_format":{"type":"string","description":"Desired output format.","enum":["table","single_value","chart","text"]},"needs_clarification":{"type":"boolean","description":"Whether the intent needs clarification."},"clarifying_questions":{"type":"array","description":"List of clarifying questions to ask the user.","items":{"type":"string"},"default":[]}},"required":["route","task_type","output_format","needs_clarification"],"additionalProperties":false}
     ports:
       - "8001:8001"
     healthcheck:
@@ -93,13 +100,20 @@ services:
 
   schema-agent:
     build:
-      context: ./schema-agent
+      context: ./agent-gen
     container_name: schema-agent
     depends_on:
       mcp-server:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      USE_TOOLS: true
+      PORT: "8002"
+      AGENT_TITLE: "schema agent"
+      SYSTEM_PROMPT: "schema_agent_prompt"
+      OUTPUT_SCHEMA: >-
+        {"title":"SchemaPlan","type":"object","description":"A plan for building a SQL query based on the user's intent and the database schema.","properties":{"primary_tables":{"type":"array","items":{"type":"string"},"default":[]},"required_fields":{"type":"array","items":{"type":"object","properties":{"table":{"type":"string"},"column":{"type":"string"},"role":{"type":"string","enum":["metric","dimension","filter","time","sort","other"]},"semantic_hint":{"type":"string","nullable":true}},"required":["table","column","role"],"additionalProperties":false},"default":[]},"join_path":{"type":"array","items":{"type":"object","properties":{"left_table":{"type":"string"},"right_table":{"type":"string"},"join_type":{"type":"string","enum":["inner","left","right","full"],"default":"inner"},"on":{"type":"array","items":{"type":"object","additionalProperties":{"type":"string"}},"default":[]},"notes":{"type":"string","nullable":true}},"required":["left_table","right_table"],"additionalProperties":false},"default":[]},"filter_mappings":{"type":"array","items":{"type":"object","properties":{"original_field_hint":{"type":"string"},"mapped_table":{"type":"string","nullable":true},"mapped_column":{"type":"string","nullable":true},"operator":{"type":"string","enum":["=","!=",">",">=","<","<=","in","between","like"]},"value":{"type":"string","description":"The value as a string. For complex types, use JSON string representation."},"confidence":{"type":"number","minimum":0,"maximum":1,"default":0.7},"notes":{"type":"string","nullable":true}},"required":["original_field_hint","operator","value"],"additionalProperties":false},"default":[]},"aggregation":{"type":"object","nullable":true,"properties":{"metric_expression_hint":{"type":"string"},"group_by_hints":{"type":"array","items":{"type":"string"},"default":[]},"time_bucket_hint":{"type":"string","nullable":true},"notes":{"type":"string","nullable":true}},"required":["metric_expression_hint"],"additionalProperties":false},"assumptions":{"type":"array","items":{"type":"string"},"default":[]},"risks":{"type":"array","items":{"type":"string"},"default":[]},"needs_clarification":{"type":"boolean","default":false},"clarifying_questions":{"type":"array","items":{"type":"string"},"default":[]}},"required":[],"additionalProperties":false}
     ports:
       - "8002:8002"
     healthcheck:
@@ -112,13 +126,20 @@ services:
 
   sql-gen-agent:
     build:
-      context: ./sql-gen-agent
+      context: ./agent-gen
     container_name: sql-gen-agent
     depends_on:
       mcp-server:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      USE_TOOLS: true
+      PORT: "8003"
+      AGENT_TITLE: "sql-gen agent"
+      SYSTEM_PROMPT: "sql_gen_agent_prompt"
+      OUTPUT_SCHEMA: >-
+        {"title":"SQLGenPlan","type":"object","description":"A plan for generating SQL based on the schema plan and user intent.","properties":{"dialect":{"type":"string","enum":["postgresql"],"default":"postgresql"},"sql":{"type":"string","nullable":true},"params":{"type":"object","additionalProperties":{"type":"string","description":"Parameter values as strings. For complex types, use JSON string representation."},"default":{}},"warnings":{"type":"array","items":{"type":"string"},"default":[]},"needs_clarification":{"type":"boolean","default":false},"clarifying_questions":{"type":"array","items":{"type":"string"},"default":[]},"raw_model_output":{"type":"string","nullable":true}},"required":[],"additionalProperties":false}
     ports:
       - "8003:8003"
     healthcheck:
@@ -131,13 +152,20 @@ services:
 
   sql-validator-agent:
     build:
-      context: ./sql-validator-agent
+      context: ./agent-gen
     container_name: sql-validator-agent
     depends_on:
       mcp-server:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      USE_TOOLS: true
+      PORT: "8004"
+      AGENT_TITLE: "sql-validator agent"
+      SYSTEM_PROMPT: "sql_validator_prompt"
+      OUTPUT_SCHEMA: >-
+        {"title":"SQLValidatorPlan","type":"object","description":"A plan for validating and potentially correcting generated SQL.","properties":{"route":{"type":"string","enum":["sql_pipeline","direct_answer"],"default":"sql_pipeline"},"direct_answer":{"type":"string","nullable":true},"decision":{"type":"string","enum":["pass","rework"]},"validated_sql":{"type":"string","nullable":true},"feedback_for_sql_gen":{"type":"string","nullable":true},"issues":{"type":"array","items":{"type":"object","properties":{"type":{"type":"string","enum":["syntax","schema","safety","logic","params","style"]},"message":{"type":"string"},"hint":{"type":"string","nullable":true}},"required":["type","message"],"additionalProperties":false},"default":[]},"raw_model_output":{"type":"string","nullable":true}},"required":["decision"],"additionalProperties":false}
     ports:
       - "8004:8004"
     healthcheck:
@@ -150,13 +178,20 @@ services:
 
   sql-executor-agent:
     build:
-      context: ./sql-executor-agent
+      context: ./agent-gen
     container_name: sql-executor-agent
     depends_on:
       mcp-server:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      USE_TOOLS: true
+      PORT: "8005"
+      AGENT_TITLE: "sql-executor agent"
+      SYSTEM_PROMPT: "sql_executor_prompt"
+      OUTPUT_SCHEMA: >-
+        {"title":"ExecutionPlan","type":"object","description":"The final execution plan with SQL results or direct answer.","properties":{"direct_answer":{"type":"string","nullable":true},"error":{"type":"string","nullable":true},"result":{"type":"object","nullable":true,"properties":{"sql":{"type":"string","nullable":true},"params":{"type":"array","items":{"type":"string","description":"Parameter values as strings. For complex types, use JSON string representation."},"default":[]},"columns":{"type":"array","items":{"type":"string"},"default":[]},"rows":{"type":"array","items":{"type":"array","items":{"type":"string","description":"Cell values as strings. For complex types, use JSON string representation."}},"default":[]},"row_count":{"type":"integer","default":0},"truncated":{"type":"boolean","default":false}},"required":[],"additionalProperties":false}},"required":[],"additionalProperties":false}
     ports:
       - "8005:8005"
     healthcheck:
