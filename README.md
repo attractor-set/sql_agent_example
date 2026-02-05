@@ -111,6 +111,7 @@ class MCPServer {
 
 class AgentRuntime {
   +POST /messages(List~AnyMessage~)
+  +Authorization: Bearer token
   +LLM call
   +MCP tool/prompt calls
 }
@@ -174,6 +175,7 @@ MCPServer --> Postgres : queries
 ## 🧱 UML Sequence Diagram
 
 ```mermaid
+Note over API,IA: All agent calls include Authorization: Bearer <token>
 sequenceDiagram
 autonumber
 actor U as User
@@ -248,6 +250,7 @@ subgraph LANGGRAPH[LangGraph pipeline]
 end
 
 API --> Intent
+Note right of API: Service-to-service auth (Bearer token)
 
 Intent -->|route: schema| Schema
 Intent -->|route: final| Final
@@ -299,6 +302,42 @@ Intent Agent
                    ↓
                Final Answer + Trace
 ```
+---
+
+## 🔐 Service-to-Service Authentication (Bearer Token)
+
+Communication between the **Orchestrator API** and all **Agent services** is protected using **HTTP Bearer Token authentication**.
+
+### How it works
+
+- A shared secret token (`AGENT_API_TOKEN`) is configured via environment variables
+- The **Orchestrator** includes the token in every agent request: Authorization: Bearer <AGENT_API_TOKEN>
+- Each **Agent Runtime** validates the token before processing `/messages`
+- Requests without a valid token are rejected with `401 Unauthorized`
+
+This ensures that:
+- Only the orchestrator can invoke agents
+- Agents are not callable by external clients
+- The system remains secure even when deployed across networks
+
+### Scope
+
+- Authentication applies **only to internal service-to-service calls**
+- End-user authentication (UI → API) is intentionally out of scope
+
+### Configuration
+
+```env
+AGENT_API_TOKEN=super-long-random-secret
+```
+
+The same token must be provided to:
+
+- api (orchestrator)
+
+- all agent containers (intent-agent, schema-agent, etc.)
+
+This is **concise, explicit, and production-grade**.
 
 ---
 
@@ -412,6 +451,7 @@ All services include **health checks** and start in the correct order.
 - ✅ Clear fallback to direct answers
 - ✅ Statement timeout enforcement
 - ✅ Result row truncation
+- 🔐 Authenticated agent access via Bearer token (orchestrator → agents)
 
 ---
 
