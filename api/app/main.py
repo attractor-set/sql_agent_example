@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage
 from uuid import uuid4
 
-from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode, get_tracer_provider, get_tracer, set_tracer_provider
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -44,13 +44,13 @@ def setup_tracing():
                                            "service.version": "1.0.0",
                                            "deployment.environment": os.getenv("ENV", "DEV"),})
     
-    trace.set_tracer_provider(TracerProvider(resource=resource))
-    tracer_provider = trace.get_tracer_provider()
+    set_tracer_provider(TracerProvider(resource=resource))
+    tracer_provider = get_tracer_provider()
     
     tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=OTLP_ENDPOINT, insecure=True)))
     tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     RequestsInstrumentor().instrument()
-    return trace.get_tracer(__name__)
+    return get_tracer(__name__)
 
 
 @asynccontextmanager
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
     async with AsyncPostgresSaver.from_conn_string(DB_DSN) as checkpoiter:
         await checkpoiter.setup()
         graph = gen_graph(checkpoiter)
-        FastAPIInstrumentor.instrument_app(app, tracer_provider=trace.get_tracer_provider())
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=get_tracer_provider())
         logger.info("Application started with OpenTelemetry tracing enabled")
         yield
 
@@ -101,11 +101,11 @@ async def chat(message: Message):
             msg = result['messages'][-1]
             msg.additional_kwargs.update({"thread_id": message.thread_id})
                 
-            span.set_status(trace.Status(trace.StatusCode.OK))
+            span.set_status(Status(StatusCode.OK))
             return msg
             
         except Exception as e:
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             
             logger.error(f"Graph invocation failed: {traceback.format_exc()}")
