@@ -366,8 +366,8 @@ sql_agent_example-main/
 ├── agent-gen/               # Generic agent runtime (all agents share this image)
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py              # FastAPI /messages endpoint + LLM invocation
-│   │   └── auth.py              # Bearer token validation for /messages
+│   │   ├── main.py          # FastAPI /messages endpoint + LLM invocation
+│   │   └── auth.py          # Bearer token validation for /messages
 │   ├── Dockerfile
 │   └── requirements.txt
 │
