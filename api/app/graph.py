@@ -1,12 +1,14 @@
 import requests
 from typing import Any, Dict, List, TypedDict, Annotated
-
+import os
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, AnyMessage
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import END, StateGraph
 from opentelemetry.trace import Status, StatusCode, get_tracer
 
 tracer = get_tracer(__name__)
+
+AGENT_API_TOKEN = os.getenv("AGENT_API_TOKEN", "")
 
 class GraphState(TypedDict):
     messages: List[AnyMessage]
@@ -34,6 +36,7 @@ def make_agent_node(step_name: str, agent_url: str):
             try:
                 resp = requests.post(f"{base_url}/messages",
                                      json=[msg2dict(m) for m in messages],
+                                     headers={"Authorization": f"Bearer {AGENT_API_TOKEN}"},
                                      timeout=30)
                 resp.raise_for_status()
                 result = resp.json()

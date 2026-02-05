@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ProviderStrategy
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from typing import Any, List
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
@@ -13,6 +13,7 @@ from mcp.types import TextContent
 from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from app.auth import require_agent_token
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -98,7 +99,7 @@ def health():
 
 
 @app.post("/messages")
-async def messages(messages: List[Message]):
+async def messages(messages: List[Message], dependencies=[Depends(require_agent_token)]):
     if agent is None:
         raise HTTPException(status_code=503, detail="Agent is not initialized")
 
