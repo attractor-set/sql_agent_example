@@ -175,7 +175,6 @@ MCPServer --> Postgres : queries
 ## 🧱 UML Sequence Diagram
 
 ```mermaid
-Note over API,IA: All agent calls include Authorization: Bearer <token>
 sequenceDiagram
 autonumber
 actor U as User
@@ -189,6 +188,8 @@ participant EA as ExecutorAgent
 participant MCP as MCP
 participant PG as Postgres
 participant CP as Checkpointer
+
+Note over API,EA: All agent calls include Authorization: Bearer <token>
 
 U->>UI: Ask question
 UI->>API: POST chat
@@ -249,8 +250,7 @@ subgraph LANGGRAPH[LangGraph pipeline]
   Final[Final node]
 end
 
-API --> Intent
-Note right of API: Service-to-service auth (Bearer token)
+API -->|Bearer Auth| Intent
 
 Intent -->|route: schema| Schema
 Intent -->|route: final| Final
